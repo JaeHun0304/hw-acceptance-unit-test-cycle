@@ -28,3 +28,11 @@ Then("the director of {string} should be {string}") do |string, string2|
   target_movie = Movie.find_by_title(string)
   target_movie.update(director: string2)
 end
+
+#Given("I am on the details page for {string}") do |string|
+ # movie_path(Movie.find_by_title(string))
+#end
+
+#Then("I should be on the Similar Movies page for {string}") do |string|
+#  same_director_movie_path(Movie.find_by_title(string))
+#end
