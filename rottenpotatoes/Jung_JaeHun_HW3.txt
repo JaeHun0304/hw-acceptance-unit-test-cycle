@@ -1,0 +1,315 @@
+-#  This file is app/views/movies/index.html.haml
+%h2 All Movies
+
+= form_tag movies_path, :method => :get, :id => 'ratings_form' do
+  = hidden_field_tag "title_sort", true if @title_header
+  = hidden_field_tag ":release_date_sort", true if @date_header
+  Include: 
+  - @all_ratings.each do |rating|
+    = rating
+    = check_box_tag "ratings[#{rating}]", 1, @selected_ratings.include?(rating), :id => "ratings_#{rating}"
+  = submit_tag 'Refresh', :id => 'ratings_submit'
+
+%table.table-striped.col-md-10#movies
+  %thead
+    %tr
+      %th{:class => @title_header}= link_to 'Movie Title', movies_path(:sort => 'title', :ratings => @selected_ratings), :id => 'title_header'
+      %th Rating
+      %th Director
+      %th{:class => @date_header}= link_to 'Release Date', movies_path(:sort => 'release_date', :ratings => @selected_ratings), :id => 'release_date_header'
+      %th More Info
+  %tbody
+    - @movies.each do |movie|
+      %tr
+        %td= movie.title 
+        %td= movie.rating
+        %td= movie.director
+        %td= movie.release_date
+        %td= link_to "More about #{movie.title}", movie_path(movie)
+
+= link_to 'Add new movie', new_movie_path
+
+-# edit.html.haml using partial
+
+%h2 Edit Existing Movie
+
+= form_tag movie_path(@movie), :method => :put do
+
+  = label :movie, :title, 'Title'
+  = text_field :movie, 'title'
+
+  = label :movie, :rating, 'Rating'
+  = select :movie, :rating, ['G','PG','PG-13','R','NC-17']
+
+  = label :movie, :release_date, 'Released On'
+  = date_select :movie, :release_date
+  
+  = label :movie, :director, 'Director'
+  = text_field :movie, 'director'
+
+  = submit_tag 'Update Movie Info'
+
+
+-# in app/views/movies/show.html.haml
+
+%h3 Details about #{@movie.title}
+
+%ul#details
+  %li
+    Rating:
+    = @movie.rating
+  %li
+    Released on:
+    = @movie.release_date.strftime("%B %d, %Y")
+
+%h4 Description:
+
+%p#description= @movie.description
+
+= link_to 'Edit', edit_movie_path(@movie)
+= button_to 'Delete', movie_path(@movie), :method => :delete, :confirm => 'Are you sure?'
+= link_to 'Back to movie list', movies_path
+= link_to 'Find Movies With Same Director', same_director_movie_path(@movie)
+
+-# this file is app/views/movies/same_director.html.haml
+%h2 Search Movie with director 
+%table.table-striped.col-md-10#movies
+  %thead
+    %tr
+      %th{:class => @title_header}= link_to 'Movie Title', movies_path(:sort => 'title', :ratings => @selected_ratings), :id => 'title_header'
+      %th Rating
+      %th Director
+      %th{:class => @date_header}= link_to 'Release Date', movies_path(:sort => 'release_date', :ratings => @selected_ratings), :id => 'release_date_header'
+      %th More Info
+  %tbody
+    - @movies.each do |movie|
+      %tr
+        %td= movie.title 
+        %td= movie.rating
+        %td= movie.director
+        %td= movie.release_date
+= link_to 'Back to movie list', movies_path
+
+#this file is app/controllers/movies_controller.rb
+
+class MoviesController < ApplicationController
+  
+  def movie_params
+    params.require(:movie).permit(:title, :rating, :description, :release_date, :director)
+  end
+
+  def show
+    id = params[:id] # retrieve movie ID from URI route
+    @movie = Movie.find(id) # look up movie by unique ID
+    # will render app/views/movies/show.<extension> by default
+  end
+
+  def index
+    sort = params[:sort] || session[:sort]
+    case sort
+    when 'title'
+      ordering,@title_header = {:title => :asc}, 'hilite'
+    when 'release_date'
+      ordering,@date_header = {:release_date => :asc}, 'hilite'
+    end
+    @all_ratings = Movie.all_ratings
+    @selected_ratings = params[:ratings] || session[:ratings] || {}
+    
+    if @selected_ratings == {}
+      @selected_ratings = Hash[@all_ratings.map {|rating| [rating, rating]}]
+    end
+    
+    if params[:sort] != session[:sort] or params[:ratings] != session[:ratings]
+      session[:sort] = sort
+      session[:ratings] = @selected_ratings
+      redirect_to :sort => sort, :ratings => @selected_ratings and return
+    end
+    @movies = Movie.where(rating: @selected_ratings.keys).order(ordering)
+  end
+
+  def new
+    # default: render 'new' template
+  end
+
+  def create
+    @movie = Movie.create!(movie_params)
+    flash[:notice] = "#{@movie.title} was successfully created."
+    redirect_to movies_path
+  end
+
+  def edit
+    @movie = Movie.find params[:id]
+  end
+
+  def update
+    @movie = Movie.find params[:id]
+    @movie.update_attributes!(movie_params)
+    flash[:notice] = "#{@movie.title} was successfully updated."
+    redirect_to movie_path(@movie)
+  end
+
+  def destroy
+    @movie = Movie.find(params[:id])
+    @movie.destroy
+    flash[:notice] = "Movie '#{@movie.title}' deleted."
+    redirect_to movies_path
+  end
+
+  def same_director
+    @movie = Movie.find(params[:id])
+    if @movie.director.nil? || @movie.director.empty?
+      flash[:notice] = "'#{@movie.title}' has no director info"
+      redirect_to movies_path
+    else
+      @movies = Movie.where(director: @movie.director)
+    end
+  end
+
+end
+
+
+#this file is spec/controllers/movies_controller_spec.rb
+
+require 'rails_helper'
+
+describe MoviesController do
+    describe "search movie with same director" do
+        it "redirect to homepage if no director found" do
+            movie = Movie.create
+            get :same_director, {:id => movie.id}
+            if movie.director.nil? || movie.director.empty?
+            response.should redirect_to(movies_path)
+            end
+        end
+    end
+end
+
+#Cucumber and Rspec log file
+
+ec2-user:~/environment/hw-acceptance-unit-test-cycle/rottenpotatoes (master) $ cucumber
+Deprecated: Found tags option '~@wip'. Support for '~@tag' will be removed from the next release of Cucumber. Please use 'not @tag' instead.
+Using the default profile...
+Feature: display list of movies filtered by MPAA rating
+  As a concerned parent
+  So that I can quickly browse movies appropriate for my family
+  I want to see movies matching only certain MPAA ratings
+
+  Background: movies have been added to database # features/filter_movie_list.feature:7
+    Given the following movies exist:            # features/step_definitions/movies_steps.rb:2
+      | title                   | rating | release_date |
+      | Aladdin                 | G      | 25-Nov-1992  |
+      | The Terminator          | R      | 26-Oct-1984  |
+      | When Harry Met Sally    | R      | 21-Jul-1989  |
+      | The Help                | PG-13  | 10-Aug-2011  |
+      | Chocolat                | PG-13  | 5-Jan-2001   |
+      | Amelie                  | R      | 25-Apr-2001  |
+      | 2001: A Space Odyssey   | G      | 6-Apr-1968   |
+      | The Incredibles         | PG     | 5-Nov-2004   |
+      | Raiders of the Lost Ark | PG     | 12-Jun-1981  |
+      | Chicken Run             | G      | 21-Jun-2000  |
+    And I am on the RottenPotatoes home page     # features/step_definitions/web_steps.rb:44
+
+  Scenario: restrict to movies with 'PG' or 'R' ratings # features/filter_movie_list.feature:24
+      # enter step(s) to check the 'PG' and 'R' checkboxes
+      # enter step(s) to uncheck all other checkboxes
+      # enter step to "submit" the search form on the homepage
+      # enter step(s) to ensure that PG and R movies are visible
+      # enter step(s) to ensure that other movies are not visible
+    When I check the following ratings: PG, R           # features/step_definitions/movies_steps.rb:14
+    And I uncheck the following ratings: G, PG-13       # features/step_definitions/movies_steps.rb:14
+    And I press "ratings_submit"                        # features/step_definitions/web_steps.rb:52
+    Then I should see "The Incredibles"                 # features/step_definitions/web_steps.rb:105
+    And I should see "The Terminator"                   # features/step_definitions/web_steps.rb:105
+    And I should not see "Alladin"                      # features/step_definitions/web_steps.rb:123
+    And I should not see "The Help"                     # features/step_definitions/web_steps.rb:123
+
+  Scenario: all ratings selected                        # features/filter_movie_list.feature:38
+    When I check the following ratings: PG, R, G, PG-13 # features/step_definitions/movies_steps.rb:14
+    And I press "ratings_submit"                        # features/step_definitions/web_steps.rb:52
+    Then I should see all the movies                    # features/step_definitions/movies_steps.rb:20
+
+Feature: search for movies by director
+  As a movie buff
+  So that I can find movies with my favorite director
+  I want to include and serach on director information in movies I enter
+
+  Background: movies in database      # features/search_movie_director.feature:7
+    Given the following movies exist: # features/step_definitions/movies_steps.rb:2
+      | title        | rating | director     | release_date |
+      | Star Wars    | PG     | George Lucas | 1977-05-25   |
+      | Blade Runner | PG     | Ridley Scott | 1982-06-25   |
+      | Alien        | R      |              | 1979-05-25   |
+      | THX-1138     | R      | George Lucas | 1971-03-11   |
+
+  Scenario: add director to existing movie                # features/search_movie_director.feature:16
+    When I go to the edit page for "Alien"                # features/step_definitions/web_steps.rb:48
+    And I fill in "Director" with "Ridley Scott"          # features/step_definitions/web_steps.rb:60
+    And I press "Update Movie Info"                       # features/step_definitions/web_steps.rb:52
+    Then the director of "Alien" should be "Ridley Scott" # features/step_definitions/movies_steps.rb:27
+
+  Scenario: find movie with same director                       # features/search_movie_director.feature:22
+    Given I am on the details page for "Star Wars"              # features/step_definitions/web_steps.rb:44
+    When I follow "Find Movies With Same Director"              # features/step_definitions/web_steps.rb:56
+    Then I should be on the Similar Movies page for "Star Wars" # features/step_definitions/web_steps.rb:230
+    And I should see "THX-1138"                                 # features/step_definitions/web_steps.rb:105
+    But I should not see "Blade Runner"                         # features/step_definitions/web_steps.rb:123
+
+  Scenario: can't find similar movies if we don't know director (sad path) # features/search_movie_director.feature:29
+    Given I am on the details page for "Alien"                             # features/step_definitions/web_steps.rb:44
+    Then I should not see "Ridley Scott"                                   # features/step_definitions/web_steps.rb:123
+    When I follow "Find Movies With Same Director"                         # features/step_definitions/web_steps.rb:56
+    Then I should be on the home page                                      # features/step_definitions/web_steps.rb:230
+    And I should see "'Alien' has no director info"                        # features/step_definitions/web_steps.rb:105
+
+Feature: display list of movies sorted by different criteria
+  As an avid moviegoer
+  So that I can quickly browse movies based on my preferences
+  I want to see movies sorted by title or release date
+
+  Background: movies have been added to database # features/sort_movie_list.feature:7
+    Given the following movies exist:            # features/step_definitions/movies_steps.rb:2
+      | title                   | rating | release_date |
+      | Aladdin                 | G      | 25-Nov-1992  |
+      | The Terminator          | R      | 26-Oct-1984  |
+      | When Harry Met Sally    | R      | 21-Jul-1989  |
+      | The Help                | PG-13  | 10-Aug-2011  |
+      | Chocolat                | PG-13  | 5-Jan-2001   |
+      | Amelie                  | R      | 25-Apr-2001  |
+      | 2001: A Space Odyssey   | G      | 6-Apr-1968   |
+      | The Incredibles         | PG     | 5-Nov-2004   |
+      | Raiders of the Lost Ark | PG     | 12-Jun-1981  |
+      | Chicken Run             | G      | 21-Jun-2000  |
+    And I am on the RottenPotatoes home page     # features/step_definitions/web_steps.rb:44
+
+  Scenario: sort movies alphabetically          # features/sort_movie_list.feature:24
+    When I follow "Movie Title"                 # features/step_definitions/web_steps.rb:56
+    Then I should see "Aladdin" before "Amelie" # features/step_definitions/movies_steps.rb:8
+
+  Scenario: sort movies in increasing order of release date # features/sort_movie_list.feature:28
+    When I follow "Release Date"                            # features/step_definitions/web_steps.rb:56
+    Then I should see "Aladdin" before "Amelie"             # features/step_definitions/movies_steps.rb:8
+
+7 scenarios (7 passed)
+39 steps (39 passed)
+0m0.703s
+Coverage report generated for Cucumber Features to /home/ec2-user/environment/hw-acceptance-unit-test-cycle/rottenpotatoes/coverage. 44 / 52 LOC (84.62%) covered.
+ec2-user:~/environment/hw-acceptance-unit-test-cycle/rottenpotatoes (master) $ rspec
+.
+
+Deprecation Warnings:
+
+Using `should` from rspec-expectations' old `:should` syntax without explicitly enabling the syntax is deprecated. Use the new `:expect` syntax or explicitly enable `:should` with `config.expect_with(:rspec) { |c| c.syntax = :should }` instead. Called from /home/ec2-user/environment/hw-acceptance-unit-test-cycle/rottenpotatoes/spec/controllers/movies_controller_spec.rb:9:in `block (3 levels) in <top (required)>'.
+
+
+If you need more of the backtrace for any of these deprecations to
+identify where to make the necessary changes, you can configure
+`config.raise_errors_for_deprecations!`, and it will turn the
+deprecation warnings into errors, giving you the full backtrace.
+
+1 deprecation warning total
+
+Finished in 0.03238 seconds (files took 1.6 seconds to load)
+1 example, 0 failures
+
+Coverage report generated for Cucumber Features, RSpec to /home/ec2-user/environment/hw-acceptance-unit-test-cycle/rottenpotatoes/coverage. 44 / 52 LOC (84.62%) covered.
+ec2-user:~/environment/hw-acceptance-unit-test-cycle/rottenpotatoes (master) $
